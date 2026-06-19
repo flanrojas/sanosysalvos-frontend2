@@ -35,7 +35,8 @@ apiClient.interceptors.response.use(
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       const url = error.config?.url ?? '';
-      if (!url.startsWith('/bff/auth/')) {
+      const authHeader = error.config?.headers?.Authorization;
+      if (!url.startsWith('/bff/auth/') && authHeader) {
         clearStoredToken();
       }
     }
