@@ -35,14 +35,27 @@ apiClient.interceptors.response.use(
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       const url = error.config?.url ?? '';
-      const authHeader = error.config?.headers?.Authorization;
-      if (!url.startsWith('/bff/auth/') && authHeader) {
+      if (!url.startsWith('/bff/auth/') && hasAuthorizationHeader(error.config?.headers)) {
         clearStoredToken();
       }
     }
     return Promise.reject(error);
   },
 );
+
+function hasAuthorizationHeader(headers: unknown): boolean {
+  if (!headers) return false;
+
+  const maybeAxiosHeaders = headers as { get?: (name: string) => unknown };
+  if (typeof maybeAxiosHeaders.get === 'function') {
+    return Boolean(
+      maybeAxiosHeaders.get('Authorization') ?? maybeAxiosHeaders.get('authorization'),
+    );
+  }
+
+  const record = headers as Record<string, unknown>;
+  return Boolean(record.Authorization ?? record.authorization);
+}
 
 export function getStoredToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
@@ -94,6 +107,9 @@ export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ message?: string; error?: string }>;
     if (axiosError.response) {
+      if (axiosError.response.status === 401) {
+        return 'Sesión no autorizada o expirada. Vuelve a iniciar sesión.';
+      }
       const data = axiosError.response.data;
       if (data && typeof data === 'object') {
         return data.message ?? data.error ?? `Error ${axiosError.response.status}`;

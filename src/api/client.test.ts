@@ -87,7 +87,9 @@ describe('getErrorMessage', () => {
         config: {} as never,
       },
     );
-    expect(getErrorMessage(withError)).toBe('Unauthorized');
+    expect(getErrorMessage(withError)).toBe(
+      'Sesión no autorizada o expirada. Vuelve a iniciar sesión.',
+    );
   });
 
   it('normaliza errores de red y errores nativos', () => {
