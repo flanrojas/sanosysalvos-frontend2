@@ -7,6 +7,7 @@ import { InputField, TextareaField, SelectField } from '../components/Field';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
 import { MapPinIcon, PawIcon } from '../components/icons';
+import { LocationPickerMap } from '../components/LocationPickerMap';
 import './ReportarPage.css';
 
 type Tipo = 'PERDIDO' | 'ENCONTRADO';
@@ -43,6 +44,15 @@ const inicial: FormState = {
   telefonoContacto: '',
 };
 
+function parseCoordinate(value: string, min: number, max: number) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
+}
+
 export function ReportarPage() {
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useToast();
@@ -54,6 +64,14 @@ export function ReportarPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateCoordinates(latitud: number, longitud: number) {
+    setForm((prev) => ({
+      ...prev,
+      latitud: latitud.toFixed(6),
+      longitud: longitud.toFixed(6),
+    }));
+  }
+
   function usarMiUbicacion() {
     if (!navigator.geolocation) {
       notifyError('Tu navegador no permite geolocalización.');
@@ -61,8 +79,7 @@ export function ReportarPage() {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        update('latitud', pos.coords.latitude.toFixed(6));
-        update('longitud', pos.coords.longitude.toFixed(6));
+        updateCoordinates(pos.coords.latitude, pos.coords.longitude);
         notifySuccess('Coordenadas capturadas.');
       },
       () => notifyError('No se pudo obtener tu ubicación.'),
@@ -75,6 +92,15 @@ export function ReportarPage() {
 
     if (!form.titulo.trim() || !form.nombre.trim()) {
       setError('El título y el nombre de la mascota son obligatorios.');
+      return;
+    }
+
+    const latitud = parseCoordinate(form.latitud, -90, 90);
+    const longitud = parseCoordinate(form.longitud, -180, 180);
+    const hasCoordinateInput = Boolean(form.latitud.trim() || form.longitud.trim());
+
+    if (hasCoordinateInput && (latitud === null || longitud === null)) {
+      setError('Selecciona una ubicación válida en el mapa.');
       return;
     }
 
@@ -93,8 +119,8 @@ export function ReportarPage() {
       nombreContacto: form.nombreContacto.trim(),
       telefonoContacto: form.telefonoContacto.trim(),
       usuarioId: null,
-      latitud: form.latitud ? Number(form.latitud) : null,
-      longitud: form.longitud ? Number(form.longitud) : null,
+      latitud,
+      longitud,
     };
 
     setSubmitting(true);
@@ -110,6 +136,15 @@ export function ReportarPage() {
       setSubmitting(false);
     }
   }
+
+  const selectedPosition =
+    parseCoordinate(form.latitud, -90, 90) !== null &&
+    parseCoordinate(form.longitud, -180, 180) !== null
+      ? ([
+          Number(form.latitud),
+          Number(form.longitud),
+        ] as [number, number])
+      : null;
 
   return (
     <div className="container page">
@@ -246,6 +281,10 @@ export function ReportarPage() {
               <InputField
                 id="latitud"
                 label="Latitud"
+                type="number"
+                min="-90"
+                max="90"
+                step="0.000001"
                 placeholder="-12.0464"
                 value={form.latitud}
                 onChange={(e) => update('latitud', e.target.value)}
@@ -253,10 +292,25 @@ export function ReportarPage() {
               <InputField
                 id="longitud"
                 label="Longitud"
+                type="number"
+                min="-180"
+                max="180"
+                step="0.000001"
                 placeholder="-77.0428"
                 value={form.longitud}
                 onChange={(e) => update('longitud', e.target.value)}
               />
+              <div className="span-2">
+                <LocationPickerMap
+                  position={selectedPosition}
+                  onSelect={updateCoordinates}
+                />
+                <p className="location-summary">
+                  {selectedPosition
+                    ? `Punto seleccionado: ${form.latitud}, ${form.longitud}`
+                    : 'Sin punto seleccionado'}
+                </p>
+              </div>
               <div className="span-2">
                 <Button type="button" variant="subtle" size="sm" onClick={usarMiUbicacion}>
                   <MapPinIcon size={16} />
