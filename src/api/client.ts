@@ -1,4 +1,4 @@
-import axios, { type AxiosError } from 'axios';
+import axios, { type AxiosError, type AxiosRequestConfig } from 'axios';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8085';
 const TOKEN_KEY = 'sanosysalvos_token';
@@ -33,32 +33,38 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      const url = error.config?.url ?? '';
-      if (!url.startsWith('/bff/auth/') && hasAuthorizationHeader(error.config?.headers)) {
-        clearStoredToken();
-      }
-    }
     return Promise.reject(error);
   },
 );
 
-function hasAuthorizationHeader(headers: unknown): boolean {
-  if (!headers) return false;
-
-  const maybeAxiosHeaders = headers as { get?: (name: string) => unknown };
-  if (typeof maybeAxiosHeaders.get === 'function') {
-    return Boolean(
-      maybeAxiosHeaders.get('Authorization') ?? maybeAxiosHeaders.get('authorization'),
-    );
-  }
-
-  const record = headers as Record<string, unknown>;
-  return Boolean(record.Authorization ?? record.authorization);
-}
-
 export function getStoredToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function getAuthRequestConfig(): AxiosRequestConfig | undefined {
+  const token = getStoredToken();
+  return token
+    ? {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    : undefined;
+}
+
+function decodeStoredToken(): Record<string, unknown> | null {
+  const token = getStoredToken();
+  if (!token) return null;
+
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    return JSON.parse(window.atob(normalized)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 export function setStoredToken(token: string) {
@@ -72,27 +78,69 @@ export function clearStoredToken() {
 }
 
 export function getStoredUserRole(): string | null {
-  const token = getStoredToken();
-  if (!token) return null;
-
-  try {
-    const [, payload] = token.split('.');
-    if (!payload) return null;
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const normalized = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-    const decoded = JSON.parse(window.atob(normalized)) as {
-      rol?: string;
-      roles?: string[];
-    };
-    const role = (decoded.rol ?? decoded.roles?.[0])?.replace(/^(ROLE_|ROL_)/, '');
-    return role?.toUpperCase() ?? null;
-  } catch {
-    return null;
-  }
+  const decoded = decodeStoredToken() as { rol?: string; roles?: string[] } | null;
+  const role = (decoded?.rol ?? decoded?.roles?.[0])?.replace(/^(ROLE_|ROL_)/, '');
+  return role?.toUpperCase() ?? null;
 }
 
 export function isStoredUserAdmin(): boolean {
   return getStoredUserRole() === 'ADMIN';
+}
+
+export function getStoredUserId(): string | null {
+  const decoded = decodeStoredToken();
+  const directId = firstString(
+    decoded?.usuarioId,
+    decoded?.userId,
+    decoded?.id,
+    decoded?.uid,
+  );
+
+  if (directId && isUuid(directId)) {
+    return directId;
+  }
+
+  const identity = firstString(decoded?.email, decoded?.sub);
+  return identity ? stableUuidFromString(identity) : null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function stableUuidFromString(value: string) {
+  const bytes = new Uint8Array(16);
+  let hash = 0x811c9dc5;
+
+  for (let round = 0; round < bytes.length; round += 1) {
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index) + round;
+      hash = Math.imul(hash, 0x01000193);
+    }
+    hash ^= hash >>> 13;
+    hash = Math.imul(hash, 0x85ebca6b);
+    bytes[round] = hash & 0xff;
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
+    16,
+    20,
+  )}-${hex.slice(20)}`;
 }
 
 export function onStoredTokenChange(listener: () => void) {

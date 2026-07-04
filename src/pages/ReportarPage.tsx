@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { crearReporteCompleto } from '../api/orquestador';
-import { getErrorMessage } from '../api/client';
+import { getErrorMessage, getStoredUserId } from '../api/client';
 import type { ReporteCompletoRequest } from '../api/types';
 import { InputField, TextareaField, SelectField } from '../components/Field';
 import { Button } from '../components/Button';
@@ -95,12 +95,24 @@ export function ReportarPage() {
       return;
     }
 
+    const tamaño = Number(form.tamaño);
+    if (!form.tamaño.trim() || !Number.isFinite(tamaño) || tamaño <= 0) {
+      setError('Ingresa un tamaño aproximado válido para la mascota.');
+      return;
+    }
+
     const latitud = parseCoordinate(form.latitud, -90, 90);
     const longitud = parseCoordinate(form.longitud, -180, 180);
     const hasCoordinateInput = Boolean(form.latitud.trim() || form.longitud.trim());
 
     if (hasCoordinateInput && (latitud === null || longitud === null)) {
       setError('Selecciona una ubicación válida en el mapa.');
+      return;
+    }
+
+    const usuarioId = getStoredUserId();
+    if (!usuarioId) {
+      setError('Debes iniciar sesión antes de publicar un reporte.');
       return;
     }
 
@@ -111,14 +123,14 @@ export function ReportarPage() {
       tipoPublicacion: form.tipo,
       especie: form.especie,
       color: form.color.trim(),
-      tamaño: form.tamaño ? Number(form.tamaño) : null,
+      tamaño,
       estado: form.tipo === 'PERDIDO' ? 'LOST' : 'FOUND',
       ubicacion: form.ubicacion.trim(),
       fecha: form.fecha,
       descripcion: form.descripcion.trim(),
       nombreContacto: form.nombreContacto.trim(),
       telefonoContacto: form.telefonoContacto.trim(),
-      usuarioId: null,
+      usuarioId,
       latitud,
       longitud,
     };
@@ -243,11 +255,12 @@ export function ReportarPage() {
                 id="tamano"
                 label="Tamaño (kg aprox.)"
                 type="number"
-                min="0"
+                min="0.1"
                 step="0.1"
                 placeholder="8.5"
                 value={form.tamaño}
                 onChange={(e) => update('tamaño', e.target.value)}
+                required
               />
               <div className="span-2">
                 <TextareaField

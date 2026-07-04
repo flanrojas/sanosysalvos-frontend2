@@ -24,6 +24,15 @@ vi.mock('../components/LocationPickerMap', () => ({
 
 const mockCrearReporteCompleto = vi.mocked(crearReporteCompleto);
 
+function createJwt(payload: Record<string, unknown>) {
+  const encodedPayload = window
+    .btoa(JSON.stringify(payload))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `header.${encodedPayload}.signature`;
+}
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -36,6 +45,10 @@ function renderPage() {
 
 describe('ReportarPage', () => {
   beforeEach(() => {
+    window.localStorage.setItem(
+      'sanosysalvos_token',
+      createJwt({ sub: 'admin@sanosysalvos.cl', roles: ['ROL_ADMIN'] }),
+    );
     mockCrearReporteCompleto.mockReset();
     mockCrearReporteCompleto.mockResolvedValue({
       mensaje: 'ok',
@@ -45,7 +58,7 @@ describe('ReportarPage', () => {
         status: 'LOST',
         species: 'Perro',
         color: '',
-        size: null,
+        size: 8.5,
         foundLocation: null,
         lostLocation: null,
         description: null,
@@ -78,6 +91,7 @@ describe('ReportarPage', () => {
 
     await user.type(screen.getByLabelText('Título del reporte'), 'Luna perdida');
     await user.type(screen.getByLabelText('Nombre de la mascota'), 'Luna');
+    await user.type(screen.getByLabelText('Tamaño (kg aprox.)'), '8.5');
     await user.click(screen.getByRole('button', { name: 'Seleccionar ubicación mock' }));
     await user.click(screen.getByRole('button', { name: 'Publicar reporte' }));
 
@@ -86,6 +100,10 @@ describe('ReportarPage', () => {
       expect.objectContaining({
         latitud: -33.4421,
         longitud: -70.6532,
+        tamaño: 8.5,
+        usuarioId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
       }),
     );
   });

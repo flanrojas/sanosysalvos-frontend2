@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient } from './client';
+import { apiClient, getAuthRequestConfig } from './client';
 import {
   actualizarPublicacion,
   crearPublicacion,
@@ -33,6 +33,7 @@ vi.mock('./client', () => ({
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  getAuthRequestConfig: vi.fn(),
 }));
 
 const getMock = vi.mocked(apiClient.get);
@@ -40,6 +41,7 @@ const postMock = vi.mocked(apiClient.post);
 const putMock = vi.mocked(apiClient.put);
 const patchMock = vi.mocked(apiClient.patch);
 const deleteMock = vi.mocked(apiClient.delete);
+const getAuthRequestConfigMock = vi.mocked(getAuthRequestConfig);
 
 const publicacionPayload: PublicacionRequest = {
   tipoPublicacion: 'PERDIDO',
@@ -65,6 +67,8 @@ describe('api wrappers', () => {
     putMock.mockReset();
     patchMock.mockReset();
     deleteMock.mockReset();
+    getAuthRequestConfigMock.mockReset();
+    getAuthRequestConfigMock.mockReturnValue(undefined);
   });
 
   it('consume publicaciones con las rutas esperadas', async () => {
@@ -78,7 +82,11 @@ describe('api wrappers', () => {
 
     postMock.mockResolvedValueOnce({ data: { idPublicacion: 'pub-2' } });
     await expect(crearPublicacion(publicacionPayload)).resolves.toEqual({ idPublicacion: 'pub-2' });
-    expect(postMock).toHaveBeenLastCalledWith('/bff/ms-publicacion/publicaciones', publicacionPayload);
+    expect(postMock).toHaveBeenLastCalledWith(
+      '/bff/ms-publicacion/publicaciones',
+      publicacionPayload,
+      undefined,
+    );
 
     putMock.mockResolvedValueOnce({ data: { idPublicacion: 'pub-1', titulo: 'Actualizada' } });
     await expect(actualizarPublicacion('pub-1', publicacionPayload)).resolves.toEqual({
@@ -88,11 +96,57 @@ describe('api wrappers', () => {
     expect(putMock).toHaveBeenLastCalledWith(
       '/bff/ms-publicacion/publicaciones/pub-1',
       publicacionPayload,
+      undefined,
     );
 
     deleteMock.mockResolvedValueOnce({});
     await expect(eliminarPublicacion('pub-1')).resolves.toBeUndefined();
-    expect(deleteMock).toHaveBeenLastCalledWith('/bff/ms-publicacion/publicaciones/pub-1');
+    expect(deleteMock).toHaveBeenLastCalledWith(
+      '/bff/ms-publicacion/publicaciones/pub-1',
+      undefined,
+    );
+  });
+
+  it('envía configuración autenticada al crear publicaciones', async () => {
+    const authConfig = { headers: { Authorization: 'Bearer token-123' } };
+    getAuthRequestConfigMock.mockReturnValue(authConfig);
+
+    postMock.mockResolvedValueOnce({ data: { idPublicacion: 'pub-2' } });
+    await expect(crearPublicacion(publicacionPayload)).resolves.toEqual({ idPublicacion: 'pub-2' });
+
+    expect(postMock).toHaveBeenLastCalledWith(
+      '/bff/ms-publicacion/publicaciones',
+      publicacionPayload,
+      authConfig,
+    );
+
+    postMock.mockResolvedValueOnce({ data: { mensaje: 'creado' } });
+    await expect(
+      crearReporteCompleto({
+        titulo: 'Mascota perdida',
+        nombre: 'Max',
+        tipo: 'PERDIDO',
+        tipoPublicacion: 'PERDIDO',
+        especie: 'Perro',
+        color: 'Negro',
+        tamaño: 10,
+        estado: 'LOST',
+        ubicacion: 'Centro',
+        fecha: '2026-06-17',
+        descripcion: 'Descripción',
+        nombreContacto: 'Mario',
+        telefonoContacto: '123',
+        usuarioId: '11111111-1111-5111-8111-111111111111',
+        latitud: -33.4489,
+        longitud: -70.6693,
+      }),
+    ).resolves.toEqual({ mensaje: 'creado' });
+
+    expect(postMock).toHaveBeenLastCalledWith(
+      '/bff/orquestador/publicaciones/completo',
+      expect.any(Object),
+      authConfig,
+    );
   });
 
   it('consume mascotas con filtros opcionales', async () => {
@@ -205,6 +259,7 @@ describe('api wrappers', () => {
     expect(postMock).toHaveBeenLastCalledWith(
       '/bff/orquestador/publicaciones/completo',
       expect.any(Object),
+      undefined,
     );
 
     getMock.mockResolvedValueOnce({ data: { publicacion: { idPublicacion: 'pub-1' } } });

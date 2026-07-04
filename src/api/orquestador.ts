@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, getAuthRequestConfig } from './client';
 import type {
   PublicacionDetalladaResponse,
   ReporteCompletoRequest,
@@ -10,9 +10,11 @@ const BASE = '/bff/orquestador';
 export async function crearReporteCompleto(
   payload: ReporteCompletoRequest,
 ): Promise<ReporteCompletoResponse> {
+  const config = getAuthRequestConfig();
   const { data } = await apiClient.post<ReporteCompletoResponse>(
     `${BASE}/publicaciones/completo`,
     payload,
+    config,
   );
   return data;
 }
